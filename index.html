@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>YANs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;700;800;900&family=Noto+Sans+TC:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 主題色變數：經典九巴紅（預設）、柔霧櫻粉、薰衣草淡紫 */
+        :root {
+            --canvas-bg: #FFF5F5;
+            --card-bg: #FFFFFF;
+            --soft-tint: #FDECEC;
+            --primary: #D32F2F;
+            --ink-main: #111827;
+            --ink-muted: #64748B;
+            --route-black: #111827;
+        }
+        [data-theme="sakura"] {
+            --canvas-bg: #FFF5F8;
+            --soft-tint: #FCE7F0;
+            --primary: #E57399;
+        }
+        [data-theme="lavender"] {
+            --canvas-bg: #F7F4FF;
+            --soft-tint: #EDE7FE;
+            --primary: #8E7CC3;
+        }
+
+        html {
+            font-size: 16px;
+            font-family: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background-color: #E5E7EB;
+            color: var(--ink-main);
+            margin: 0;
+            padding: 0;
+        }
+
+        .thin-scroll::-webkit-scrollbar { width: 4px; }
+        .thin-scroll::-webkit-scrollbar-track { background: transparent; }
+        .thin-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 9999px; }
+
+        /* 統一高密度治癒卡片（收藏卡與查詢預報卡共用） */
+        .healing-card {
+            background-color: var(--card-bg);
+            border-radius: 17px;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
+            border: 1px solid rgba(241, 245, 249, 0.95);
+        }
+
+        /* 到站時間格式保護 */
+        .eta-nowrap {
+            white-space: nowrap;
+            letter-spacing: -0.02em;
+        }
+        .eta-imminent-2line {
+            display: inline-block;
+            line-height: 1.12;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        /* 360度順時針旋轉刷新動畫 */
+        @keyframes spin360 {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin-once {
+            animation: spin360 0.62s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* 超長總站名平滑走馬燈動畫 */
+        @keyframes marqueeLoop {
+            0%, 18% { transform: translateX(0); }
+            72%, 88% { transform: translateX(var(--marquee-offset, -40px)); }
+            100% { transform: translateX(0); }
+        }
+        .marquee-track {
+            display: inline-block;
+            white-space: nowrap;
+            will-change: transform;
+        }
+        .marquee-active {
+            animation: marqueeLoop var(--marquee-duration, 6s) ease-in-out infinite;
+        }
+
+        /* 收藏卡片長按浮起與拖拽效果 */
+        .fav-card-item {
+            transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+            touch-action: pan-y;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .fav-card-item.long-press-lifted {
+            transform: scale(1.02);
+            box-shadow: 0 14px 28px rgba(15, 23, 42, 0.14);
+            z-index: 30;
+            position: relative;
+            border-color: var(--primary);
+        }
+        .fav-card-item.dragging-active {
+            touch-action: none;
+        }
+        .fav-card-item.drag-over-target {
+            border-top: 2.5px dashed var(--primary);
+        }
+
+        /* 底部操作選單（Bottom Action Sheet）過渡效果 */
+        .action-sheet-backdrop {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.22s ease;
+        }
+        .action-sheet-backdrop.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .action-sheet-panel {
+            transform: translateY(105%);
+            transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .action-sheet-backdrop.open .action-sheet-panel {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body class="min-h-[100dvh] flex items-center justify-center sm:p-4">
+
+    <!-- 手機高密度緊湊主框架 -->
+    <main class="w-full max-w-[430px] h-[100dvh] sm:h-[820px] sm:max-h-[92dvh] sm:rounded-[28px] sm:shadow-2xl flex flex-col overflow-hidden relative"
+          style="background-color: var(--canvas-bg);">
+
+        <!-- 頂部標題列：左側 • YANs，右側三款主題圓點 ＋ 最右方統一即時更新旋轉按鈕（↻） -->
+        <header class="px-4 pt-2.5 pb-1.5 flex items-center justify-between shrink-0 gap-2">
+            <div class="flex items-center gap-1.5 min-w-0">
+                <span class="w-2.5 h-2.5 rounded-full inline-block shrink-0" style="background-color: var(--primary);"></span>
+                <h1 class="text-[19px] font-black tracking-tight truncate leading-none" style="color: var(--ink-main);">YANs</h1>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                <!-- 三色柔和主題圓點（經典九巴紅、柔霧櫻粉、薰衣草淡紫） -->
+                <div class="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-full shadow-sm border border-slate-100 shrink-0" role="group" aria-label="主題色切換">
+                    <button onclick="setTheme('kmb')" data-theme-btn="kmb" title="經典九巴紅" class="w-3.5 h-3.5 rounded-full transition-transform duration-200 focus:outline-none" style="background-color: #D32F2F;"></button>
+                    <button onclick="setTheme('sakura')" data-theme-btn="sakura" title="柔霧櫻粉" class="w-3.5 h-3.5 rounded-full transition-transform duration-200 focus:outline-none" style="background-color: #E57399;"></button>
+                    <button onclick="setTheme('lavender')" data-theme-btn="lavender" title="薰衣草淡紫" class="w-3.5 h-3.5 rounded-full transition-transform duration-200 focus:outline-none" style="background-color: #8E7CC3;"></button>
+                </div>
+                <!-- 最右方統一即時更新旋轉按鈕（↻） -->
+                <button id="btnHeaderForceRefresh" onclick="handleHeaderForceRefresh()" title="即時更新班次" aria-label="即時更新班次"
+                        class="w-7 h-7 rounded-full bg-white hover:bg-slate-50 shadow-sm border border-slate-100 flex items-center justify-center active:scale-90 transition shrink-0"
+                        style="color: var(--primary);">
+                    <svg id="headerRefreshIconSvg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+                        <polyline points="21 3 21 9 15 9"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- 雙頁膠囊導航切換器 -->
+        <nav class="px-3.5 pb-2 shrink-0">
+            <div class="grid grid-cols-2 p-0.5 rounded-xl bg-slate-200/70">
+                <button id="tabBtnFav" onclick="switchPage('favorites')"
+                        class="py-1.5 rounded-[10px] text-[14px] font-extrabold transition-all duration-200 flex items-center justify-center gap-1.5 bg-white shadow-sm"
+                        style="color: var(--primary);">
+                    <span>我的收藏</span>
+                    <span id="favCountPill" class="hidden text-[11px] font-black px-1.5 rounded-full"
+                          style="background-color: var(--soft-tint); color: var(--primary);">0</span>
+                    <span id="offlineBadge" class="hidden text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">暫時離線</span>
+                </button>
+                <button id="tabBtnSearch" onclick="switchPage('search')"
+                        class="py-1.5 rounded-[10px] text-[14px] font-bold transition-all duration-200 flex items-center justify-center text-slate-500">
+                    <span>路線查詢</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- 輕量浮動提示膠囊（支援刪除後「復原」按鈕） -->
+        <div id="toastPill" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800/95 backdrop-blur-md text-white text-[12.5px] font-bold px-3.5 py-1.5 rounded-full shadow-lg flex items-center gap-2.5">
+            <span id="toastText"></span>
+            <button id="toastUndoBtn" onclick="undoLastDelete()" class="hidden text-amber-300 hover:text-amber-200 font-black underline underline-offset-2 active:scale-95 transition">
+                復原
+            </button>
+        </div>
+
+        <!-- ==================== 第一頁：我的收藏（首頁） ==================== -->
+        <section id="pageFavorites" class="flex-1 min-h-0 flex flex-col px-3 pb-2 overflow-hidden">
+            <!-- 分區副標題（無重複刷新按鈕） -->
+            <div class="px-1 pb-1.5 flex items-center justify-between shrink-0">
+                <span class="text-[13px] font-extrabold tracking-tight" style="color: var(--ink-main);">我的收藏</span>
+            </div>
+
+            <!-- 收藏卡片可捲動列表 -->
+            <div id="favoritesListContainer" class="flex-1 overflow-y-auto thin-scroll flex flex-col gap-[8px] pr-0.5 pb-1.5"></div>
+
+            <!-- 收藏頁底部提示 -->
+            <div id="favoritesBottomCaption" class="pt-1 pb-0.5 text-center shrink-0 text-[11.5px] font-medium text-slate-400">
+                長按巴士線可排序或刪除
+            </div>
+        </section>
+
+        <!-- ==================== 第二頁：路線查詢 ==================== -->
+        <section id="pageSearch" class="hidden flex-1 min-h-0 flex flex-col px-3 pb-2.5 gap-2 overflow-hidden">
+            <!-- 純淨搜尋輸入與方向選擇區（無快捷預設路線膠囊列） -->
+            <div class="healing-card p-2.5 shrink-0 space-y-1.5">
+                <div class="flex items-center gap-1.5">
+                    <div class="flex items-center flex-1 rounded-xl px-3 py-1.5" style="background-color: var(--soft-tint);">
+                        <input type="text" id="routeInput" value="" placeholder="輸入路線如 1A、6、68X"
+                               oninput="this.value = this.value.toUpperCase()"
+                               onkeydown="if(event.key==='Enter') handleRouteSearch()"
+                               class="w-full bg-transparent text-[17px] font-black tracking-wider uppercase outline-none placeholder:text-slate-400 placeholder:font-bold"
+                               style="color: var(--route-black);">
+                        <button onclick="clearRouteInput()" title="清除" class="text-slate-400 hover:text-slate-600 text-xs px-1 font-bold">✕</button>
+                    </div>
+                    <button onclick="handleRouteSearch()"
+                            class="text-white font-extrabold text-[14px] px-3.5 py-2 rounded-xl active:scale-95 transition shrink-0 shadow-sm"
+                            style="background-color: var(--primary);">
+                        查詢
+                    </button>
+                </div>
+
+                <!-- 往返方向切換按鈕列（僅顯示「往 目的地」，過長自動走馬燈） -->
+                <div id="directionBar" class="hidden grid grid-cols-2 gap-1.5 pt-0.5"></div>
+            </div>
+
+            <!-- 選定車站即時到站預報卡（與「我的收藏」100% 統一三層左側垂直對齊格式） -->
+            <div id="searchEtaCard" class="hidden healing-card shrink-0" style="padding: 10px 13px;"></div>
+
+            <!-- 沿線車站列表（方案 A：緊湊單行列表，站名起點與上方預報卡左側嚴格垂直對齊） -->
+            <div class="healing-card flex-1 min-h-0 flex flex-col overflow-hidden">
+                <div class="py-1.5 border-b border-slate-100 flex items-center justify-between shrink-0" style="padding-left: 13px; padding-right: 13px;">
+                    <span class="text-[12px] font-bold" style="color: var(--ink-muted);">沿線車站</span>
+                    <span id="stopsCountBadge" class="text-[12px] font-extrabold" style="color: var(--primary);"></span>
+                </div>
+                <div id="stopsScrollList" class="flex-1 overflow-y-auto thin-scroll divide-y divide-slate-50">
+                    <div class="p-6 text-center text-[13.5px] leading-relaxed" style="color: var(--ink-muted);">
+                        請輸入巴士路線編號<br>查看沿線車站及實時到站預報
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 長按卡片彈出精緻底部操作選單（Bottom Action Sheet） ==================== -->
+        <div id="favActionSheetBackdrop" onclick="closeFavActionSheet()"
+             class="action-sheet-backdrop absolute inset-0 z-40 bg-slate-900/35 backdrop-blur-[2px] flex items-end justify-center p-2.5">
+            <div onclick="event.stopPropagation()"
+                 class="action-sheet-panel w-full rounded-[22px] bg-white/95 backdrop-blur-xl shadow-2xl border border-white p-3 space-y-2">
+                <div class="w-9 h-1 rounded-full bg-slate-200 mx-auto mb-1"></div>
+                <div class="px-2 pb-1.5 border-b border-slate-100 flex items-center gap-2 min-w-0">
+                    <span id="sheetRouteBadge" class="font-black text-[18px] shrink-0 leading-none"
+                          style="color: var(--primary);">--</span>
+                    <div class="min-w-0 flex-1">
+                        <div id="sheetDestTitle" class="text-[14.5px] font-extrabold truncate" style="color: var(--route-black);">往 --</div>
+                        <div id="sheetStopSub" class="text-[12px] font-medium truncate text-slate-500">--</div>
+                    </div>
+                </div>
+
+                <div class="space-y-1.5 pt-0.5">
+                    <button id="btnSheetMoveUp" onclick="handleSheetMove(-1)"
+                            class="w-full py-2.5 px-3.5 rounded-xl bg-slate-50 hover:bg-slate-100 active:scale-[0.99] transition flex items-center justify-center gap-2 text-[14.5px] font-extrabold text-slate-800 disabled:opacity-35 disabled:pointer-events-none">
+                        <span>↑</span>
+                        <span>向上移一位</span>
+                    </button>
+
+                    <button id="btnSheetMoveDown" onclick="handleSheetMove(1)"
+                            class="w-full py-2.5 px-3.5 rounded-xl bg-slate-50 hover:bg-slate-100 active:scale-[0.99] transition flex items-center justify-center gap-2 text-[14.5px] font-extrabold text-slate-800 disabled:opacity-35 disabled:pointer-events-none">
+                        <span>↓</span>
+                        <span>向下移一位</span>
+                    </button>
+
+                    <button id="btnSheetDelete" onclick="handleSheetDelete()"
+                            class="w-full py-2.5 px-3.5 rounded-xl bg-red-50/90 hover:bg-red-100/80 active:scale-[0.99] transition flex items-center justify-center gap-2 text-[14.5px] font-extrabold text-red-600">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                            <path d="M10 11v6"/>
+                            <path d="M14 11v6"/>
+                            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                        <span>刪除此收藏</span>
+                    </button>
+                </div>
+
+                <div class="pt-0.5">
+                    <button onclick="closeFavActionSheet()"
+                            class="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 active:scale-[0.99] transition text-[14px] font-extrabold text-slate-600">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
+        const FAV_STORAGE_KEY = 'yans_kmb_favorites_v1';
+        const THEME_STORAGE_KEY = 'yans_kmb_theme_v1';
+        const STOPS_CACHE_KEY = 'yans_kmb_stopmap_v1';
+        const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+        // 離線或沙盒環境下的常用路線與站點備援資料（優先即時連線官方 API）
+        const FALLBACK_ROUTES = [
+            { route: '1A', bound: 'O', service_type: '1', orig_tc: '中秀茂坪', dest_tc: '尖沙咀碼頭' },
+            { route: '1A', bound: 'I', service_type: '1', orig_tc: '尖沙咀碼頭', dest_tc: '中秀茂坪' },
+            { route: '6', bound: 'O', service_type: '1', orig_tc: '荔枝角', dest_tc: '尖沙咀碼頭' },
+            { route: '6', bound: 'I', service_type: '1', orig_tc: '尖沙咀碼頭', dest_tc: '荔枝角' },
+            { route: '30', bound: 'O', service_type: '1', orig_tc: '荃威花園', dest_tc: '長沙灣' },
+            { route: '30', bound: 'I', service_type: '1', orig_tc: '長沙灣', dest_tc: '荃威花園' },
+            { route: '48X', bound: 'O', service_type: '1', orig_tc: '禾輋', dest_tc: '灣景花園' },
+            { route: '48X', bound: 'I', service_type: '1', orig_tc: '灣景花園', dest_tc: '禾輋' },
+            { route: '53', bound: 'O', service_type: '1', orig_tc: '元朗(形點)', dest_tc: '荃灣(如心廣場)' },
+            { route: '53', bound: 'I', service_type: '1', orig_tc: '荃灣(如心廣場)', dest_tc: '元朗(形點)' },
+            { route: '68X', bound: 'O', service_type: '1', orig_tc: '洪水橋(洪福邨)', dest_tc: '旺角(柏景灣)' },
+            { route: '68X', bound: 'I', service_type: '1', orig_tc: '旺角(柏景灣)', dest_tc: '洪水橋(洪福邨)' },
+            { route: '203C', bound: 'O', service_type: '1', orig_tc: '大坑東', dest_tc: '尖沙咀東(麼地道)' },
+            { route: '203C', bound: 'I', service_type: '1', orig_tc: '尖沙咀東(麼地道)', dest_tc: '深水埗(大坑東)' },
+            { route: '264X', bound: 'O', service_type: '1', orig_tc: '天水圍(天瑞邨)', dest_tc: '大埔(太和)' },
+            { route: '264X', bound: 'I', service_type: '1', orig_tc: '大埔(太和)', dest_tc: '天耀' },
+            { route: '270A', bound: 'O', service_type: '1', orig_tc: '上水', dest_tc: '尖沙咀東(麼地道)' },
+            { route: '270A', bound: 'I', service_type: '1', orig_tc: '尖沙咀東(麼地道)', dest_tc: '上水' },
+            { route: '968', bound: 'O', service_type: '1', orig_tc: '元朗(西)', dest_tc: '銅鑼灣(天后)' },
+            { route: '968', bound: 'I', service_type: '1', orig_tc: '銅鑼灣(天后)', dest_tc: '元朗(西)' },
+            { route: 'B1', bound: 'O', service_type: '1', orig_tc: '天慈', dest_tc: '落馬洲站(福田口岸)' },
+            { route: 'B1', bound: 'I', service_type: '1', orig_tc: '落馬洲站(福田口岸)', dest_tc: '天慈' }
+        ];
+
+        const FALLBACK_STOPS = {
+            '1A_O': ['中秀茂坪巴士總站', '秀茂坪邨秀明樓', '觀塘市中心', '牛頭角站', '九龍灣站', '新蒲崗四美街', '旺角站', '油麻地文明里', '佐敦道', '尖沙咀碼頭'],
+            '1A_I': ['尖沙咀碼頭', '九龍公園', '佐敦道', '油麻地碧街', '旺角奶路臣街', '九龍灣站', '牛頭角站', '觀塘裕民坊', '中秀茂坪巴士總站'],
+            '30_O': ['荃威花園總站', '荃景圍街市', '荃灣中心', '美環街', '愉景新城', '荃灣站', '大窩口站', '葵涌道荔景邨', '美孚站', '長沙灣總站'],
+            '30_I': ['長沙灣總站', '美孚站', '葵涌道荔景邨', '大窩口站', '荃灣眾安街', '荃灣站', '愉景新城', '荃景圍天橋', '荃威花園總站'],
+            '203C_O': ['深水埗(大坑東)巴士總站', '大坑東遊樂場', '大坑西邨民興樓', '石硤尾站', '太子站', '旺角中心', '油麻地永星里', '佐敦站', '尖沙咀東(麼地道)'],
+            '203C_I': ['尖沙咀東(麼地道)', '尖沙咀轉車站', '佐敦道', '油麻地長樂街', '旺角弼街', '太子站', '石硤尾站', '深水埗(大坑東)巴士總站'],
+            '264X_I': ['太和總站', '大埔安祥路', '大埔廣福道', '廣福邨', '落馬洲轉車站', '元朗形點 I', '天耀邨耀豐樓', '天耀巴士總站'],
+            '270A_O': ['上水總站', '粉嶺公路轉車站', '獅子山隧道', '九龍塘聯合道', '旺角站', '油麻地文明里', '尖沙咀東(麼地道)'],
+            'B1_O': ['天慈巴士總站', '天耀邨耀民樓', '屏欣苑', '元朗形點 I', '新田運輸交匯處', '落馬洲站(福田口岸)'],
+            'B1_I': ['落馬洲站(福田口岸)', '新田運輸交匯處', '元朗又新街', '元朗廣場', '屏欣苑', '天耀邨耀豐樓', '天慈巴士總站']
+        };
+
+        const state = {
+            currentPage: 'favorites',
+            theme: 'kmb',
+            favorites: [],
+            favTop3Map: {},
+            routesList: null,
+            stopMap: {},
+            activeRoute: '',
+            activeBound: 'O',
+            activeServiceType: '1',
+            activeStopId: '',
+            activeStopName: '',
+            activeDestName: '',
+            isFetchingFavs: false,
+            isFetchingSearch: false,
+            autoRefreshTimer: null,
+            sheetTargetIndex: -1,
+            lastDeletedBackup: null
+        };
+
+        // ==================== 主題色管理（經典九巴紅、柔霧櫻粉、薰衣草淡紫） ====================
+        function loadTheme() {
+            let saved = 'kmb';
+            try { saved = localStorage.getItem(THEME_STORAGE_KEY) || 'kmb'; } catch (e) {}
+            const validThemes = ['kmb', 'sakura', 'lavender'];
+            if (!validThemes.includes(saved)) saved = 'kmb';
+            setTheme(saved, false);
+        }
+
+        function setTheme(themeName, persist = true) {
+            state.theme = themeName;
+            if (themeName === 'kmb') {
+                document.documentElement.removeAttribute('data-theme');
+            } else {
+                document.documentElement.setAttribute('data-theme', themeName);
+            }
+            document.querySelectorAll('[data-theme-btn]').forEach(btn => {
+                const isSelected = btn.getAttribute('data-theme-btn') === themeName;
+                btn.style.transform = isSelected ? 'scale(1.24)' : 'scale(1)';
+                btn.style.boxShadow = isSelected ? '0 0 0 2px #FFFFFF, 0 0 0 3.5px var(--primary)' : 'none';
+            });
+            if (persist) {
+                try { localStorage.setItem(THEME_STORAGE_KEY, themeName); } catch (e) {}
+            }
+        }
+
+        // ==================== 收藏資料存取（純淨空白起始，獨立儲存於各自瀏覽器） ====================
+        function getFavKey(route, bound, serviceType, stopId) {
+            return `${route}_${bound}_${serviceType}_${stopId}`;
+        }
+
+        function loadFavorites() {
+            try {
+                const raw = localStorage.getItem(FAV_STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) state.favorites = parsed;
+                }
+            } catch (e) {
+                state.favorites = [];
+            }
+            updateFavCountPill();
+        }
+
+        function saveFavorites() {
+            try { localStorage.setItem(FAV_STORAGE_KEY, JSON.stringify(state.favorites)); } catch (e) {}
+            updateFavCountPill();
+        }
+
+        function updateFavCountPill() {
+            const pill = document.getElementById('favCountPill');
+            if (!pill) return;
+            const count = state.favorites.length;
+            pill.textContent = String(count);
+            if (count > 0) pill.classList.remove('hidden');
+            else pill.classList.add('hidden');
+        }
+
+        function isStopFavorited(route, bound, serviceType, stopId) {
+            return state.favorites.some(f =>
+                f.route === route &&
+                f.bound === bound &&
+                String(f.serviceType) === String(serviceType) &&
+                f.stopId === stopId
+            );
+        }
+
+        // ==================== 純淨分鐘數格式化 ====================
+        function formatPureEta(etaIso) {
+            if (!etaIso) {
+                return { html: `<span class="eta-nowrap">暫無班次</span>`, isImminent: false, hasValue: false };
+            }
+            const targetTs = new Date(etaIso).getTime();
+            if (isNaN(targetTs)) {
+                return { html: `<span class="eta-nowrap">暫無班次</span>`, isImminent: false, hasValue: false };
+            }
+            const mins = Math.floor((targetTs - Date.now()) / 60000);
+            if (mins <= 1) {
+                return { html: `<span class="eta-imminent-2line">即將<br>到達</span>`, isImminent: true, hasValue: true };
+            }
+            return { html: `<span class="eta-nowrap">${mins} 分鐘</span>`, isImminent: false, hasValue: true };
+        }
+
+        // ==================== 統一三層左側垂直對齊卡片內部 HTML 建構器（收藏卡與查詢預報卡共用） ====================
+        function buildUnified3RowCardInnerHtml({ route, destName, stopName, top3, showStar = false, isFavorited = false, isLoading = false }) {
+            const destDisplay = destName ? `往 ${destName}` : '';
+
+            const firstBus = isLoading
+                ? { html: `<span class="eta-nowrap">更新中</span>`, isImminent: false, hasValue: false }
+                : formatPureEta(top3[0] ? top3[0].eta : null);
+
+            const firstColor = !firstBus.hasValue ? '#94A3B8' : 'var(--primary)';
+            const firstSizeClass = !firstBus.hasValue
+                ? 'text-[14px] font-extrabold'
+                : (firstBus.isImminent ? 'text-[15.5px] font-black' : 'text-[21px] font-black');
+
+            const subPillsHtml = [
+                { idx: 1, label: '第二班' },
+                { idx: 2, label: '第三班' }
+            ].map(item => {
+                const bus = top3[item.idx];
+                const formatted = isLoading
+                    ? { html: `<span class="eta-nowrap">--</span>`, isImminent: false, hasValue: false }
+                    : formatPureEta(bus ? bus.eta : null);
+
+                const valColor = !formatted.hasValue ? '#94A3B8' : 'var(--ink-main)';
+                const valSizeClass = !formatted.hasValue
+                    ? 'text-[12px] font-bold'
+                    : (formatted.isImminent ? 'text-[12px] font-black' : 'text-[13.5px] font-extrabold');
+
+                const isSecond = item.idx === 1;
+                // 「第二班」無左內距，與上方路線號碼、上車站名嚴格左側垂直對齊；「第三班」置於柔和膠囊內清晰並排
+                const pillLayoutClass = isSecond
+                    ? 'flex items-center justify-between gap-1.5 pr-2 py-1 min-w-0'
+                    : 'flex items-center justify-between gap-1.5 pl-2.5 pr-2 py-1 rounded-lg bg-slate-50/95 min-w-0';
+
+                return `
+                    <div class="${pillLayoutClass}">
+                        <span class="text-[12px] font-bold shrink-0" style="color: var(--ink-muted);">${item.label}</span>
+                        <div class="${valSizeClass} text-right shrink-0" style="color: ${valColor};">${formatted.html}</div>
+                    </div>
+                `;
+            }).join('');
+
+            const rightStarHtml = showStar
+                ? `<button id="btnSearchFavToggle" onclick="toggleSearchStopFavorite()" aria-label="收藏或取消收藏"
+                           class="w-7 h-7 rounded-full flex items-center justify-center text-[20px] transition shrink-0 hover:bg-slate-100 active:scale-90 -mr-1"
+                           style="color: ${isFavorited ? 'var(--primary)' : '#CBD5E1'};">
+                       ${isFavorited ? '★' : '☆'}
+                   </button>`
+                : '';
+
+            return `
+                <!-- 第一行：無左內距主題色（預設紅色）路線大字（22px）＋大字粗體「往 目的地」（17.5px）＋（僅查詢卡顯示右側星星） -->
+                <div class="flex items-center justify-between gap-2 min-w-0" style="margin-bottom: 4px;">
+                    <div class="flex items-baseline gap-2 min-w-0 flex-1">
+                        <span class="font-black text-[22px] shrink-0 leading-none tracking-tight"
+                              style="color: var(--primary);">${route}</span>
+                        <div class="unified-dest-viewport min-w-0 flex-1 overflow-hidden">
+                            <span class="marquee-track text-[17.5px] font-extrabold leading-tight" style="color: var(--route-black);">
+                                ${destDisplay}
+                            </span>
+                        </div>
+                    </div>
+                    ${rightStarHtml}
+                </div>
+
+                <!-- 第二行：左側柔和深灰小字上車站名（13px，與路線號碼嚴格左對齊）＋右側第一班大字主題色 -->
+                <div class="flex items-center justify-between gap-2.5" style="margin-bottom: 6px;">
+                    <div class="text-[13px] font-semibold leading-snug break-words flex-1 min-w-0" style="color: #4B5563;">
+                        ${stopName}
+                    </div>
+                    <div class="text-right min-w-[70px] shrink-0 ${firstSizeClass} leading-none" style="color: ${firstColor};">
+                        ${firstBus.html}
+                    </div>
+                </div>
+
+                <!-- 第三行：「第二班」與上方兩行嚴格左側垂直對齊＋「第三班」柔和膠囊並排 -->
+                <div class="grid grid-cols-2 gap-2 pt-1.5 border-t border-slate-100/90">
+                    ${subPillsHtml}
+                </div>
+            `;
+        }
+
+        function applyUnifiedCardMarqueeIfOverflow(rootEl) {
+            if (!rootEl) return;
+            requestAnimationFrame(() => {
+                rootEl.querySelectorAll('.unified-dest-viewport').forEach(viewport => {
+                    const track = viewport.querySelector('.marquee-track');
+                    if (!track) return;
+                    track.classList.remove('marquee-active');
+                    track.style.removeProperty('--marquee-offset');
+                    track.style.removeProperty('--marquee-duration');
+
+                    const overflowPx = track.scrollWidth - viewport.clientWidth;
+                    if (overflowPx > 4) {
+                        const offset = -(overflowPx + 10);
+                        const durationSec = Math.max(4.5, Math.min(10, (overflowPx / 26) + 2.8));
+                        track.style.setProperty('--marquee-offset', `${offset}px`);
+                        track.style.setProperty('--marquee-duration', `${durationSec.toFixed(1)}s`);
+                        track.classList.add('marquee-active');
+                    }
+                });
+            });
+        }
+
+        // ==================== 官方 API 串接與快取／離線備援 ====================
+        async function fetchJson(url, timeoutMs = 6000) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const res = await fetch(url, { signal: controller.signal });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        function setOfflineStatus(isOffline) {
+            const badge = document.getElementById('offlineBadge');
+            if (!badge) return;
+            if (isOffline) badge.classList.remove('hidden');
+            else badge.classList.add('hidden');
+        }
+
+        async function getAllRoutes() {
+            if (Array.isArray(state.routesList) && state.routesList.length > 0) {
+                return state.routesList;
+            }
+            try {
+                const res = await fetchJson(`${API_BASE}/route/`, 7000);
+                if (Array.isArray(res.data) && res.data.length > 0) {
+                    state.routesList = res.data;
+                    setOfflineStatus(false);
+                    return state.routesList;
+                }
+            } catch (e) {
+                setOfflineStatus(true);
+            }
+            state.routesList = FALLBACK_ROUTES;
+            return state.routesList;
+        }
+
+        async function preloadStopMap() {
+            try {
+                const cachedRaw = localStorage.getItem(STOPS_CACHE_KEY);
+                if (cachedRaw) {
+                    const parsed = JSON.parse(cachedRaw);
+                    if (parsed && parsed.ts && (Date.now() - parsed.ts < CACHE_TTL_MS) && parsed.map) {
+                        state.stopMap = parsed.map;
+                        return state.stopMap;
+                    }
+                }
+            } catch (e) {}
+
+            try {
+                const res = await fetchJson(`${API_BASE}/stop`, 8000);
+                if (Array.isArray(res.data)) {
+                    const map = {};
+                    res.data.forEach(item => {
+                        if (item.stop && item.name_tc) map[item.stop] = item.name_tc;
+                    });
+                    state.stopMap = map;
+                    try {
+                        localStorage.setItem(STOPS_CACHE_KEY, JSON.stringify({ ts: Date.now(), map }));
+                    } catch (e) {}
+                }
+            } catch (e) {}
+            return state.stopMap;
+        }
+
+        async function getStopNameTc(stopId) {
+            if (!stopId) return '未知車站';
+            if (state.stopMap[stopId]) return state.stopMap[stopId];
+            try {
+                const res = await fetchJson(`${API_BASE}/stop/${stopId}`, 4500);
+                if (res && res.data && res.data.name_tc) {
+                    state.stopMap[stopId] = res.data.name_tc;
+                    return res.data.name_tc;
+                }
+            } catch (e) {}
+            return `車站 (${stopId.slice(0, 4)})`;
+        }
+
+        // ==================== 雙頁膠囊分頁切換 ====================
+        function switchPage(pageName) {
+            closeFavActionSheet();
+            state.currentPage = pageName;
+            const pageFav = document.getElementById('pageFavorites');
+            const pageSearch = document.getElementById('pageSearch');
+            const btnFav = document.getElementById('tabBtnFav');
+            const btnSearch = document.getElementById('tabBtnSearch');
+
+            if (pageName === 'favorites') {
+                pageFav.classList.remove('hidden');
+                pageSearch.classList.add('hidden');
+
+                btnFav.classList.add('bg-white', 'shadow-sm', 'font-extrabold');
+                btnFav.classList.remove('text-slate-500', 'font-bold');
+                btnFav.style.color = 'var(--primary)';
+
+                btnSearch.classList.remove('bg-white', 'shadow-sm', 'font-extrabold');
+                btnSearch.classList.add('text-slate-500', 'font-bold');
+                btnSearch.style.color = '';
+
+                renderFavoritesPage();
+                refreshAllFavoritesEtas(true);
+            } else {
+                pageFav.classList.add('hidden');
+                pageSearch.classList.remove('hidden');
+
+                btnSearch.classList.add('bg-white', 'shadow-sm', 'font-extrabold');
+                btnSearch.classList.remove('text-slate-500', 'font-bold');
+                btnSearch.style.color = 'var(--primary)';
+
+                btnFav.classList.remove('bg-white', 'shadow-sm', 'font-extrabold');
+                btnFav.classList.add('text-slate-500', 'font-bold');
+                btnFav.style.color = '';
+
+                getAllRoutes().catch(() => {});
+            }
+        }
+
+        // ==================== 頂部最右方統一即時更新旋轉按鈕（↻） ====================
+        async function handleHeaderForceRefresh() {
+            const svg = document.getElementById('headerRefreshIconSvg');
+            if (svg) {
+                svg.classList.remove('animate-spin-once');
+                void svg.offsetWidth;
+                svg.classList.add('animate-spin-once');
+            }
+
+            if (state.currentPage === 'favorites') {
+                if (state.favorites.length === 0) {
+                    showToast('目前尚無已收藏車站');
+                    return;
+                }
+                await refreshAllFavoritesEtas(false);
+                showToast('已更新最新到站時間');
+            } else {
+                if (!state.activeStopId || !state.activeRoute) {
+                    showToast('請先搜尋路線及選擇車站');
+                    return;
+                }
+                await querySearchStopEta(
+                    state.activeStopId,
+                    state.activeRoute,
+                    state.activeServiceType,
+                    state.activeStopName,
+                    state.activeDestName,
+                    state.activeBound,
+                    false
+                );
+                showToast('已更新最新到站時間');
+            }
+        }
+
+        async function refreshAllFavoritesEtas(isSilent = true) {
+            if (state.favorites.length === 0) {
+                renderFavoritesPage();
+                return;
+            }
+            if (state.isFetchingFavs) return;
+            state.isFetchingFavs = true;
+
+            let anySuccess = false;
+            let anyError = false;
+
+            try {
+                await Promise.all(state.favorites.map(async (fav) => {
+                    const key = getFavKey(fav.route, fav.bound, fav.serviceType, fav.stopId);
+                    if (String(fav.stopId).startsWith('MOCK_')) {
+                        const now = Date.now();
+                        state.favTop3Map[key] = [
+                            { eta: new Date(now + 45 * 1000).toISOString() },
+                            { eta: new Date(now + 16 * 60 * 1000).toISOString() },
+                            { eta: new Date(now + 34 * 60 * 1000).toISOString() }
+                        ];
+                        anyError = true;
+                        return;
+                    }
+                    try {
+                        const res = await fetchJson(`${API_BASE}/eta/${fav.stopId}/${fav.route}/${fav.serviceType}`, 6000);
+                        const rawList = Array.isArray(res.data) ? res.data : [];
+
+                        let filtered = rawList.filter(item =>
+                            item.dir === fav.bound && String(item.service_type) === String(fav.serviceType)
+                        );
+                        if (filtered.length === 0 && rawList.length > 0) {
+                            filtered = rawList.filter(item => String(item.service_type) === String(fav.serviceType));
+                        }
+                        filtered.sort((a, b) => (a.eta_seq || 0) - (b.eta_seq || 0));
+                        state.favTop3Map[key] = filtered.slice(0, 3);
+                        anySuccess = true;
+                    } catch (err) {
+                        anyError = true;
+                    }
+                }));
+
+                setOfflineStatus(!anySuccess && anyError);
+
+                if (state.currentPage === 'favorites') {
+                    renderFavoritesPage();
+                }
+            } finally {
+                state.isFetchingFavs = false;
+            }
+        }
+
+        function jumpToFavoriteInSearch(fav) {
+            document.getElementById('routeInput').value = fav.route;
+            state.activeRoute = fav.route;
+            state.activeBound = fav.bound;
+            state.activeServiceType = fav.serviceType;
+            state.activeStopId = fav.stopId;
+            switchPage('search');
+            handleRouteSearch(fav.bound, fav.stopId);
+        }
+
+        function renderFavoritesPage() {
+            const container = document.getElementById('favoritesListContainer');
+            if (!container) return;
+
+            if (state.favorites.length === 0) {
+                container.innerHTML = `
+                    <div class="healing-card p-6 text-center space-y-3 mt-1">
+                        <div class="w-11 h-11 rounded-2xl mx-auto flex items-center justify-center text-xl"
+                             style="background-color: var(--soft-tint); color: var(--primary);">☆</div>
+                        <div class="text-[15.5px] font-black" style="color: var(--ink-main);">尚未收藏任何車站</div>
+                        <div class="text-[13px] leading-relaxed" style="color: var(--ink-muted);">
+                            請前往「路線查詢」搜尋巴士路線，<br>點擊車站旁的 <span class="font-bold" style="color: var(--primary);">★</span> 加入收藏
+                        </div>
+                        <button onclick="switchPage('search')"
+                                class="mt-1 px-4 py-2 rounded-xl text-[14px] font-extrabold text-white shadow-sm active:scale-95 transition"
+                                style="background-color: var(--primary);">
+                            前往路線查詢
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = '';
+
+            state.favorites.forEach((fav, idx) => {
+                const key = getFavKey(fav.route, fav.bound, fav.serviceType, fav.stopId);
+                const top3 = state.favTop3Map[key] || [];
+
+                const card = document.createElement('div');
+                card.className = 'fav-card-item healing-card cursor-pointer';
+                card.style.padding = '10px 13px';
+                card.setAttribute('data-fav-index', idx);
+
+                card.innerHTML = buildUnified3RowCardInnerHtml({
+                    route: fav.route,
+                    destName: fav.destName,
+                    stopName: fav.stopName,
+                    top3,
+                    showStar: false
+                });
+
+                attachLongPressAndActionSheetHandlers(card, idx, fav);
+                container.appendChild(card);
+            });
+
+            applyUnifiedCardMarqueeIfOverflow(container);
+        }
+
+        // ==================== 長按彈出精緻底部操作選單（兼顧上下拖拽換位） ====================
+        function attachLongPressAndActionSheetHandlers(cardEl, startIndex, favObj) {
+            let pressTimer = null;
+            let isLongPressed = false;
+            let isDraggingMoved = false;
+            let startY = 0;
+            let currentTargetIndex = startIndex;
+            let suppressNextClick = false;
+
+            const container = document.getElementById('favoritesListContainer');
+            const getClientY = (e) => (e.touches && e.touches.length > 0) ? e.touches[0].clientY : e.clientY;
+
+            const startPress = (e) => {
+                if (e.button && e.button !== 0) return;
+                startY = getClientY(e);
+                isLongPressed = false;
+                isDraggingMoved = false;
+                suppressNextClick = false;
+                currentTargetIndex = startIndex;
+
+                pressTimer = setTimeout(() => {
+                    isLongPressed = true;
+                    suppressNextClick = true;
+                    cardEl.classList.add('long-press-lifted');
+                    if (state.favorites.length > 1) {
+                        cardEl.classList.add('dragging-active');
+                    }
+                    if (navigator.vibrate) {
+                        try { navigator.vibrate(24); } catch (err) {}
+                    }
+                }, 500);
+            };
+
+            const movePress = (e) => {
+                const y = getClientY(e);
+                if (!isLongPressed) {
+                    if (Math.abs(y - startY) > 10) clearTimeout(pressTimer);
+                    return;
+                }
+
+                const deltaY = y - startY;
+                if (Math.abs(deltaY) > 14) {
+                    isDraggingMoved = true;
+                }
+
+                if (isDraggingMoved && state.favorites.length > 1) {
+                    if (e.cancelable) e.preventDefault();
+                    cardEl.style.transform = `translateY(${deltaY}px) scale(1.02)`;
+
+                    const allCards = Array.from(container.querySelectorAll('.fav-card-item'));
+                    allCards.forEach(c => c.classList.remove('drag-over-target'));
+
+                    let hoverIdx = startIndex;
+                    allCards.forEach((otherCard, idx) => {
+                        if (otherCard === cardEl) return;
+                        const rect = otherCard.getBoundingClientRect();
+                        const midY = rect.top + rect.height / 2;
+                        if (y > rect.top && y < rect.bottom) {
+                            hoverIdx = idx;
+                            otherCard.classList.add('drag-over-target');
+                        } else if (idx === 0 && y <= rect.top) {
+                            hoverIdx = 0;
+                        } else if (idx === allCards.length - 1 && y >= rect.bottom) {
+                            hoverIdx = allCards.length - 1;
+                        } else if (y > midY && idx > startIndex) {
+                            hoverIdx = idx;
+                        }
+                    });
+                    currentTargetIndex = hoverIdx;
+                }
+            };
+
+            const endPress = () => {
+                clearTimeout(pressTimer);
+                if (!isLongPressed) return;
+
+                const wasDragged = isDraggingMoved;
+                isLongPressed = false;
+                isDraggingMoved = false;
+
+                cardEl.classList.remove('long-press-lifted', 'dragging-active');
+                cardEl.style.transform = '';
+                container.querySelectorAll('.fav-card-item').forEach(c => c.classList.remove('drag-over-target'));
+
+                if (wasDragged) {
+                    if (currentTargetIndex !== startIndex && currentTargetIndex >= 0 && currentTargetIndex < state.favorites.length) {
+                        const [movedItem] = state.favorites.splice(startIndex, 1);
+                        state.favorites.splice(currentTargetIndex, 0, movedItem);
+                        saveFavorites();
+                        renderFavoritesPage();
+                        showToast('已更新收藏次序');
+                    }
+                } else {
+                    openFavActionSheet(startIndex);
+                }
+            };
+
+            cardEl.addEventListener('touchstart', startPress, { passive: true });
+            cardEl.addEventListener('touchmove', movePress, { passive: false });
+            cardEl.addEventListener('touchend', endPress);
+            cardEl.addEventListener('touchcancel', endPress);
+
+            cardEl.addEventListener('mousedown', startPress);
+            const onWinMove = (e) => { if (isLongPressed) movePress(e); };
+            const onWinUp = () => {
+                if (isLongPressed) endPress();
+                else clearTimeout(pressTimer);
+            };
+            window.addEventListener('mousemove', onWinMove);
+            window.addEventListener('mouseup', onWinUp);
+
+            cardEl.addEventListener('click', (e) => {
+                if (suppressNextClick) {
+                    suppressNextClick = false;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+                jumpToFavoriteInSearch(favObj);
+            });
+        }
+
+        function openFavActionSheet(index) {
+            const fav = state.favorites[index];
+            if (!fav) return;
+            state.sheetTargetIndex = index;
+
+            document.getElementById('sheetRouteBadge').textContent = fav.route;
+            document.getElementById('sheetDestTitle').textContent = fav.destName ? `往 ${fav.destName}` : fav.route;
+            document.getElementById('sheetStopSub').textContent = fav.stopName;
+
+            const btnUp = document.getElementById('btnSheetMoveUp');
+            const btnDown = document.getElementById('btnSheetMoveDown');
+            btnUp.disabled = index <= 0;
+            btnDown.disabled = index >= state.favorites.length - 1;
+
+            document.getElementById('favActionSheetBackdrop').classList.add('open');
+        }
+
+        function closeFavActionSheet() {
+            const backdrop = document.getElementById('favActionSheetBackdrop');
+            if (backdrop) backdrop.classList.remove('open');
+            state.sheetTargetIndex = -1;
+        }
+
+        function handleSheetMove(delta) {
+            const idx = state.sheetTargetIndex;
+            const targetIdx = idx + delta;
+            if (idx < 0 || targetIdx < 0 || targetIdx >= state.favorites.length) return;
+
+            const [moved] = state.favorites.splice(idx, 1);
+            state.favorites.splice(targetIdx, 0, moved);
+            saveFavorites();
+            renderFavoritesPage();
+            closeFavActionSheet();
+            showToast(delta < 0 ? '已向上移一位' : '已向下移一位');
+        }
+
+        function handleSheetDelete() {
+            const idx = state.sheetTargetIndex;
+            if (idx < 0 || idx >= state.favorites.length) return;
+
+            const [removedItem] = state.favorites.splice(idx, 1);
+            state.lastDeletedBackup = { item: removedItem, index: idx };
+            saveFavorites();
+            renderFavoritesPage();
+            closeFavActionSheet();
+            showToast(`已移除 ${removedItem.route} ${removedItem.stopName}`, true);
+        }
+
+        function undoLastDelete() {
+            if (!state.lastDeletedBackup) return;
+            const { item, index } = state.lastDeletedBackup;
+            const insertIdx = Math.min(Math.max(0, index), state.favorites.length);
+            state.favorites.splice(insertIdx, 0, item);
+            state.lastDeletedBackup = null;
+            saveFavorites();
+            renderFavoritesPage();
+            refreshAllFavoritesEtas(true);
+            showToast(`已復原 ${item.route} ${item.stopName}`, false);
+        }
+
+        // ==================== 第二頁：路線查詢 ====================
+        function clearRouteInput() {
+            const input = document.getElementById('routeInput');
+            input.value = '';
+            input.focus();
+        }
+
+        // B1 及雙向重複總站智能去重修正
+        function resolveDirectionDisplayLabels(matches) {
+            const labels = matches.map(m => {
+                const routeCode = m.route.toUpperCase();
+                if (routeCode === 'B1') {
+                    return m.bound === 'O' ? '落馬洲站（福田口岸）' : '天慈';
+                }
+                return m.dest_tc || '';
+            });
+
+            if (matches.length >= 2 && labels[0] === labels[1] && matches[0].bound !== matches[1].bound) {
+                return matches.map(m => {
+                    if (m.orig_tc && m.orig_tc !== m.dest_tc) {
+                        return `${m.dest_tc}（${m.orig_tc}開）`;
+                    }
+                    return m.bound === 'O' ? `${m.dest_tc}（去程）` : `${m.dest_tc}（回程）`;
+                });
+            }
+            return labels;
+        }
+
+        function applyDirectionMarqueeIfOverflow() {
+            requestAnimationFrame(() => {
+                document.querySelectorAll('#directionBar .dir-btn').forEach(btn => {
+                    const viewport = btn.querySelector('.marquee-viewport');
+                    const track = btn.querySelector('.marquee-track');
+                    if (!viewport || !track) return;
+
+                    track.classList.remove('marquee-active');
+                    track.style.removeProperty('--marquee-offset');
+                    track.style.removeProperty('--marquee-duration');
+
+                    const overflowPx = track.scrollWidth - viewport.clientWidth;
+                    if (overflowPx > 4) {
+                        const offset = -(overflowPx + 10);
+                        const durationSec = Math.max(4.5, Math.min(10, (overflowPx / 26) + 2.8));
+                        track.style.setProperty('--marquee-offset', `${offset}px`);
+                        track.style.setProperty('--marquee-duration', `${durationSec.toFixed(1)}s`);
+                        track.classList.add('marquee-active');
+                    }
+                });
+            });
+        }
+
+        async function handleRouteSearch(preferredBound = null, preferredStopId = null) {
+            const routeVal = document.getElementById('routeInput').value.trim().toUpperCase();
+            if (!routeVal) {
+                showToast('請輸入巴士路線編號');
+                return;
+            }
+
+            const dirBar = document.getElementById('directionBar');
+            const stopsList = document.getElementById('stopsScrollList');
+            stopsList.innerHTML = `<div class="p-6 text-center text-[14px]" style="color: var(--ink-muted);">正在搜尋 ${routeVal} 路線資料...</div>`;
+
+            try {
+                const routes = await getAllRoutes();
+                const allMatches = routes.filter(r => r.route.toUpperCase() === routeVal);
+
+                if (allMatches.length === 0) {
+                    dirBar.classList.add('hidden');
+                    document.getElementById('searchEtaCard').classList.add('hidden');
+                    stopsList.innerHTML = `<div class="p-6 text-center text-[14.5px] font-bold" style="color: var(--primary);">找不到路線「${routeVal}」，請確認是否為九巴或龍運路線</div>`;
+                    return;
+                }
+
+                const regularMatches = allMatches.filter(m => String(m.service_type) === '1');
+                const matches = regularMatches.length > 0 ? regularMatches : allMatches;
+                const displayDestLabels = resolveDirectionDisplayLabels(matches);
+
+                dirBar.classList.remove('hidden');
+                dirBar.className = matches.length === 1
+                    ? 'grid grid-cols-1 gap-2 pt-0.5'
+                    : 'grid grid-cols-2 gap-2 pt-0.5';
+                dirBar.innerHTML = '';
+
+                let targetIdx = 0;
+                if (preferredBound) {
+                    const foundIdx = matches.findIndex(m => m.bound === preferredBound);
+                    if (foundIdx >= 0) targetIdx = foundIdx;
+                }
+
+                matches.forEach((item, idx) => {
+                    const boundPath = item.bound === 'O' ? 'outbound' : 'inbound';
+                    const cleanDestLabel = displayDestLabels[idx];
+                    const fullLabelText = `往 ${cleanDestLabel}`;
+
+                    const btn = document.createElement('button');
+                    btn.className = 'dir-btn w-full px-2.5 py-1.5 rounded-xl text-[13px] font-extrabold transition overflow-hidden text-left';
+                    btn.style.backgroundColor = 'var(--soft-tint)';
+                    btn.style.color = 'var(--route-black)';
+                    btn.innerHTML = `
+                        <div class="marquee-viewport w-full overflow-hidden">
+                            <span class="marquee-track">${fullLabelText}</span>
+                        </div>
+                    `;
+                    btn.onclick = () => selectDirection(item.route, boundPath, item.bound, item.service_type, cleanDestLabel, btn, null);
+                    dirBar.appendChild(btn);
+
+                    if (idx === targetIdx) {
+                        selectDirection(item.route, boundPath, item.bound, item.service_type, cleanDestLabel, btn, preferredStopId);
+                    }
+                });
+
+                applyDirectionMarqueeIfOverflow();
+            } catch (e) {
+                setOfflineStatus(true);
+                stopsList.innerHTML = `<div class="p-6 text-center text-[14px]" style="color: var(--primary);">網絡連線異常，未能取得路線資料</div>`;
+            }
+        }
+
+        async function selectDirection(route, boundPath, boundCode, serviceType, destTc, activeBtn, autoSelectStopId = null) {
+            document.getElementById('directionBar').querySelectorAll('.dir-btn').forEach(b => {
+                b.style.backgroundColor = 'var(--soft-tint)';
+                b.style.color = 'var(--route-black)';
+            });
+
+            if (activeBtn) {
+                activeBtn.style.backgroundColor = 'var(--primary)';
+                activeBtn.style.color = '#FFFFFF';
+            }
+
+            state.activeRoute = route;
+            state.activeBound = boundCode;
+            state.activeServiceType = serviceType;
+            state.activeDestName = destTc;
+
+            const stopsList = document.getElementById('stopsScrollList');
+            const countBadge = document.getElementById('stopsCountBadge');
+            stopsList.innerHTML = `<div class="p-6 text-center text-[14px]" style="color: var(--ink-muted);">正在讀取沿線車站...</div>`;
+
+            let resolved = [];
+            try {
+                await preloadStopMap();
+                const res = await fetchJson(`${API_BASE}/route-stop/${route}/${boundPath}/${serviceType}`, 6500);
+                const seqList = Array.isArray(res.data) ? res.data : [];
+                setOfflineStatus(false);
+
+                resolved = await Promise.all(seqList.map(async s => ({
+                    seq: s.seq,
+                    stopId: s.stop,
+                    nameTc: await getStopNameTc(s.stop)
+                })));
+            } catch (e) {
+                setOfflineStatus(true);
+                const fbKey = `${route.toUpperCase()}_${boundCode}`;
+                const fbNames = FALLBACK_STOPS[fbKey] || [`${destTc}方向 起點站`, `${destTc}方向 中途站`, `${destTc}總站`];
+                resolved = fbNames.map((name, idx) => ({
+                    seq: idx + 1,
+                    stopId: `MOCK_${fbKey}_${idx + 1}`,
+                    nameTc: name
+                }));
+            }
+
+            countBadge.textContent = `共 ${resolved.length} 站`;
+            stopsList.innerHTML = '';
+
+            if (resolved.length === 0) {
+                stopsList.innerHTML = `<div class="p-6 text-center text-[14px]" style="color: var(--ink-muted);">此方向暫無車站資料</div>`;
+                return;
+            }
+
+            let initialRow = null;
+            let initialStop = null;
+
+            resolved.forEach((st, idx) => {
+                const isFav = isStopFavorited(route, boundCode, serviceType, st.stopId);
+                const row = document.createElement('div');
+                row.className = 'stop-row w-full min-h-[43px] py-1.5 transition flex items-center justify-between gap-2 cursor-pointer hover:bg-slate-50/90';
+                row.style.paddingLeft = '13px';
+                row.style.paddingRight = '13px';
+                row.setAttribute('data-stop-id', st.stopId);
+
+                row.innerHTML = `
+                    <div class="flex items-center min-w-0 flex-1">
+                        <span class="text-[15px] font-bold truncate" style="color: var(--ink-main);">${st.nameTc}</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <span class="seq-badge min-w-[20px] h-5 px-1 rounded-full text-[11px] font-extrabold flex items-center justify-center shrink-0 transition"
+                              style="background-color: var(--soft-tint); color: var(--ink-muted);">
+                            ${st.seq}
+                        </span>
+                        <button class="row-star-btn w-7 h-7 rounded-full flex items-center justify-center text-[18px] shrink-0 hover:bg-slate-100 active:scale-90 transition -mr-1"
+                                style="color: ${isFav ? 'var(--primary)' : '#CBD5E1'};" title="收藏/取消收藏">
+                            ${isFav ? '★' : '☆'}
+                        </button>
+                    </div>
+                `;
+
+                row.onclick = () => {
+                    highlightStopRow(row);
+                    querySearchStopEta(st.stopId, route, serviceType, st.nameTc, destTc, boundCode, false);
+                };
+
+                const starBtn = row.querySelector('.row-star-btn');
+                starBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleFavoriteByParams(route, boundCode, serviceType, st.stopId, st.nameTc, destTc);
+                    renderStopRowStars();
+                    updateSearchPageStarState();
+                };
+
+                stopsList.appendChild(row);
+
+                if (autoSelectStopId && st.stopId === autoSelectStopId) {
+                    initialRow = row;
+                    initialStop = st;
+                } else if (idx === 0 && !initialRow) {
+                    initialRow = row;
+                    initialStop = st;
+                }
+            });
+
+            if (initialRow && initialStop) {
+                highlightStopRow(initialRow);
+                if (autoSelectStopId) initialRow.scrollIntoView({ block: 'nearest' });
+                querySearchStopEta(initialStop.stopId, route, serviceType, initialStop.nameTc, destTc, boundCode, false);
+            }
+        }
+
+        function highlightStopRow(targetRow) {
+            document.getElementById('stopsScrollList').querySelectorAll('.stop-row').forEach(el => {
+                el.style.backgroundColor = '';
+                const badge = el.querySelector('.seq-badge');
+                if (badge) {
+                    badge.style.backgroundColor = 'var(--soft-tint)';
+                    badge.style.color = 'var(--ink-muted)';
+                }
+            });
+            if (targetRow) {
+                targetRow.style.backgroundColor = 'var(--soft-tint)';
+                const badge = targetRow.querySelector('.seq-badge');
+                if (badge) {
+                    badge.style.backgroundColor = 'var(--primary)';
+                    badge.style.color = '#FFFFFF';
+                }
+            }
+        }
+
+        function renderStopRowStars() {
+            document.getElementById('stopsScrollList').querySelectorAll('.stop-row').forEach(row => {
+                const sId = row.getAttribute('data-stop-id');
+                const btn = row.querySelector('.row-star-btn');
+                if (!btn || !sId) return;
+                const isFav = isStopFavorited(state.activeRoute, state.activeBound, state.activeServiceType, sId);
+                btn.textContent = isFav ? '★' : '☆';
+                btn.style.color = isFav ? 'var(--primary)' : '#CBD5E1';
+            });
+        }
+
+        function toggleFavoriteByParams(route, bound, serviceType, stopId, stopName, destName) {
+            const idx = state.favorites.findIndex(f =>
+                f.route === route &&
+                f.bound === bound &&
+                String(f.serviceType) === String(serviceType) &&
+                f.stopId === stopId
+            );
+
+            if (idx >= 0) {
+                state.favorites.splice(idx, 1);
+                showToast(`已移除 ${route} ${stopName}`);
+            } else {
+                state.favorites.unshift({ stopId, route, bound, serviceType, stopName, destName });
+                showToast(`已加入 ${route} ${stopName}`);
+                refreshAllFavoritesEtas(true);
+            }
+            saveFavorites();
+        }
+
+        function toggleSearchStopFavorite() {
+            if (!state.activeStopId) return;
+            toggleFavoriteByParams(
+                state.activeRoute,
+                state.activeBound,
+                state.activeServiceType,
+                state.activeStopId,
+                state.activeStopName,
+                state.activeDestName
+            );
+            updateSearchPageStarState();
+            renderStopRowStars();
+        }
+
+        function updateSearchPageStarState() {
+            const btn = document.getElementById('btnSearchFavToggle');
+            if (!btn) return;
+            const isFav = isStopFavorited(state.activeRoute, state.activeBound, state.activeServiceType, state.activeStopId);
+            btn.textContent = isFav ? '★' : '☆';
+            btn.style.color = isFav ? 'var(--primary)' : '#CBD5E1';
+        }
+
+        function renderSearchUnifiedEtaCard(top3, isLoading = false) {
+            const card = document.getElementById('searchEtaCard');
+            if (!card) return;
+            card.classList.remove('hidden');
+
+            const isFav = isStopFavorited(state.activeRoute, state.activeBound, state.activeServiceType, state.activeStopId);
+            card.innerHTML = buildUnified3RowCardInnerHtml({
+                route: state.activeRoute,
+                destName: state.activeDestName,
+                stopName: state.activeStopName,
+                top3,
+                showStar: true,
+                isFavorited: isFav,
+                isLoading
+            });
+
+            applyUnifiedCardMarqueeIfOverflow(card);
+        }
+
+        async function querySearchStopEta(stopId, route, serviceType, stopName, destTc, boundCode, isSilent = false) {
+            if (isSilent && state.isFetchingSearch) return;
+
+            state.activeStopId = stopId;
+            state.activeRoute = route;
+            state.activeServiceType = serviceType;
+            state.activeStopName = stopName;
+            state.activeDestName = destTc;
+            state.activeBound = boundCode;
+
+            if (!isSilent) {
+                renderSearchUnifiedEtaCard([], true);
+            }
+
+            if (String(stopId).startsWith('MOCK_')) {
+                const now = Date.now();
+                const mockTop3 = [
+                    { eta: new Date(now + 45 * 1000).toISOString() },
+                    { eta: new Date(now + 16 * 60 * 1000).toISOString() },
+                    { eta: new Date(now + 34 * 60 * 1000).toISOString() }
+                ];
+                const key = getFavKey(route, boundCode, serviceType, stopId);
+                state.favTop3Map[key] = mockTop3;
+                renderSearchUnifiedEtaCard(mockTop3, false);
+                return;
+            }
+
+            state.isFetchingSearch = true;
+            try {
+                const res = await fetchJson(`${API_BASE}/eta/${stopId}/${route}/${serviceType}`, 6000);
+                const rawList = Array.isArray(res.data) ? res.data : [];
+                setOfflineStatus(false);
+
+                if (state.activeStopId !== stopId || state.activeRoute !== route || state.activeBound !== boundCode) {
+                    return;
+                }
+
+                let filtered = rawList.filter(item => {
+                    const okDir = boundCode ? item.dir === boundCode : true;
+                    const okSvc = serviceType ? String(item.service_type) === String(serviceType) : true;
+                    return okDir && okSvc;
+                });
+
+                if (filtered.length === 0 && rawList.length > 0) {
+                    filtered = rawList.filter(item => String(item.service_type) === String(serviceType));
+                }
+
+                filtered.sort((a, b) => (a.eta_seq || 0) - (b.eta_seq || 0));
+                const top3 = filtered.slice(0, 3);
+
+                const key = getFavKey(route, boundCode, serviceType, stopId);
+                state.favTop3Map[key] = top3;
+
+                if (route.toUpperCase() !== 'B1' && top3.length > 0 && top3[0].dest_tc && !destTc.includes('（')) {
+                    state.activeDestName = top3[0].dest_tc;
+                }
+
+                renderSearchUnifiedEtaCard(top3, false);
+            } catch (e) {
+                setOfflineStatus(true);
+                renderSearchUnifiedEtaCard([], false);
+            } finally {
+                state.isFetchingSearch = false;
+            }
+        }
+
+        // ==================== 背景 15 秒靜默更新與提示 ====================
+        function startAutoRefreshLoop() {
+            if (state.autoRefreshTimer) clearInterval(state.autoRefreshTimer);
+            state.autoRefreshTimer = setInterval(() => {
+                if (state.currentPage === 'favorites') {
+                    refreshAllFavoritesEtas(true);
+                } else if (state.activeStopId) {
+                    querySearchStopEta(
+                        state.activeStopId,
+                        state.activeRoute,
+                        state.activeServiceType,
+                        state.activeStopName,
+                        state.activeDestName,
+                        state.activeBound,
+                        true
+                    );
+                }
+            }, 15000);
+        }
+
+        let toastTimer = null;
+        function showToast(msg, allowUndo = false) {
+            const pill = document.getElementById('toastPill');
+            const textEl = document.getElementById('toastText');
+            const undoBtn = document.getElementById('toastUndoBtn');
+            if (!pill || !textEl || !undoBtn) return;
+
+            textEl.textContent = msg;
+            if (allowUndo) undoBtn.classList.remove('hidden');
+            else undoBtn.classList.add('hidden');
+
+            pill.classList.remove('hidden');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                pill.classList.add('hidden');
+                undoBtn.classList.add('hidden');
+            }, allowUndo ? 3200 : 1800);
+        }
+
+        function initApp() {
+            loadTheme();
+            loadFavorites();
+            renderFavoritesPage();
+            getAllRoutes().catch(() => {});
+            preloadStopMap().catch(() => {});
+            refreshAllFavoritesEtas(true);
+            startAutoRefreshLoop();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initApp);
+        } else {
+            initApp();
+        }
+    </script>
+</body>
+</html>
+
+<!-- ==================== YANs ESP32-S3 藍牙同步外掛模組 ==================== -->
+<script>
+(function() {
+    const BLE_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+    const BLE_CHAR_UUID    = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+    let bleCharCache = null;
+
+    // 1. 自動在頂部即時更新按鈕旁邊插入「藍牙同步小螢幕」圓形按鈕
+    function injectBleSyncButton() {
+        const refreshBtn = document.getElementById('btnHeaderForceRefresh');
+        if (!refreshBtn || document.getElementById('btnSyncBleScreen')) return;
+
+        const bleBtn = document.createElement('button');
+        bleBtn.id = 'btnSyncBleScreen';
+        bleBtn.title = '同步到小螢幕';
+        bleBtn.setAttribute('aria-label', '同步到小螢幕');
+        bleBtn.className = 'w-7 h-7 rounded-full bg-white hover:bg-slate-50 shadow-sm border border-slate-100 flex items-center justify-center active:scale-90 transition shrink-0';
+        bleBtn.style.color = 'var(--primary)';
+        bleBtn.innerHTML = `
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/>
+            </svg>
+        `;
+        bleBtn.onclick = syncFavoritesToEsp32;
+        refreshBtn.parentNode.insertBefore(bleBtn, refreshBtn);
+    }
+
+    // 2. 格式化剩餘分鐘數給 ESP32-S3
+    function formatEtaForScreen(etaIsoString, isFirstBus) {
+        if (!etaIsoString) return isFirstBus ? '--' : '';
+        const diffMins = Math.floor((new Date(etaIsoString).getTime() - Date.now()) / 60000);
+        if (diffMins <= 0) return isFirstBus ? '即將到達' : '即將';
+        return isFirstBus ? `${diffMins} 分鐘` : `${diffMins} 分`;
+    }
+
+    // 3. 清理站名括號編號
+    function cleanName(name) {
+        if (!name) return '';
+        return String(name).replace(/\s*\([A-Z0-9]+\)\s*$/i, '').trim();
+    }
+
+    // 4. 藍牙連線並傳送最多 5 條收藏路線
+    async function syncFavoritesToEsp32() {
+        const notify = (msg) => (typeof showToast === 'function' ? showToast(msg) : alert(msg));
+
+        if (!navigator.bluetooth) {
+            notify('此瀏覽器不支援藍牙，請用 Android Chrome 開啟');
+            return;
+        }
+        if (typeof state === 'undefined' || !state.favorites || state.favorites.length === 0) {
+            notify('請先在網頁收藏至少一條巴士線');
+            return;
+        }
+
+        try {
+            if (!bleCharCache || !bleCharCache.service.device.gatt.connected) {
+                notify('正在搜尋小螢幕...');
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'YANs_Bus_Screen' }],
+                    optionalServices: [BLE_SERVICE_UUID]
+                });
+                device.addEventListener('gattserverdisconnected', () => {
+                    bleCharCache = null;
+                });
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+                bleCharCache = await service.getCharacteristic(BLE_CHAR_UUID);
+            }
+
+            notify('正在同步最新班次...');
+            if (typeof refreshAllFavoritesEtas === 'function') {
+                await refreshAllFavoritesEtas(true);
+            }
+
+            const top5List = state.favorites.slice(0, 5).map(fav => {
+                const key = typeof getFavKey === 'function'
+                    ? getFavKey(fav.route, fav.bound, fav.serviceType, fav.stopId)
+                    : `${fav.route}_${fav.bound}_${fav.serviceType}_${fav.stopId}`;
+                const top3 = (state.favTop3Map && state.favTop3Map[key]) || [];
+                const rawDest = cleanName(fav.destName);
+                const formattedDest = rawDest.startsWith('往') ? rawDest : `往 ${rawDest}`;
+
+                return {
+                    r: String(fav.route || '--'),
+                    d: formattedDest,
+                    s: cleanName(fav.stopName),
+                    t1: top3[0] ? formatEtaForScreen(top3[0].eta, true) : '暫無班次',
+                    t2: top3[1] ? formatEtaForScreen(top3[1].eta, false) : ''
+                };
+            });
+
+            const jsonStr = JSON.stringify(top5List);
+            await bleCharCache.writeValue(new TextEncoder().encode(jsonStr));
+            notify(`已成功同步 ${top5List.length} 條路線到小螢幕！`);
+        } catch (err) {
+            if (err && err.name !== 'NotFoundError') {
+                console.error(err);
+                bleCharCache = null;
+                notify('藍牙連線失敗，請確認小螢幕已開機');
+            }
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', injectBleSyncButton);
+    } else {
+        injectBleSyncButton();
+    }
+})();
+</script>
