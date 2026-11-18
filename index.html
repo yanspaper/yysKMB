@@ -1433,14 +1433,13 @@
 </body>
 </html>
 
-<!-- ==================== YANs ESP32-S3 藍牙同步外掛模組 ==================== -->
+<!-- ==================== YANs ESP32-S3 藍牙同步外掛模組 (修正版) ==================== -->
 <script>
 (function() {
     const BLE_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
     const BLE_CHAR_UUID    = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
     let bleCharCache = null;
 
-    // 1. 自動在頂部即時更新按鈕旁邊插入「藍牙同步小螢幕」圓形按鈕
     function injectBleSyncButton() {
         const refreshBtn = document.getElementById('btnHeaderForceRefresh');
         if (!refreshBtn || document.getElementById('btnSyncBleScreen')) return;
@@ -1460,7 +1459,6 @@
         refreshBtn.parentNode.insertBefore(bleBtn, refreshBtn);
     }
 
-    // 2. 格式化剩餘分鐘數給 ESP32-S3
     function formatEtaForScreen(etaIsoString, isFirstBus) {
         if (!etaIsoString) return isFirstBus ? '--' : '';
         const diffMins = Math.floor((new Date(etaIsoString).getTime() - Date.now()) / 60000);
@@ -1468,13 +1466,11 @@
         return isFirstBus ? `${diffMins} 分鐘` : `${diffMins} 分`;
     }
 
-    // 3. 清理站名括號編號
     function cleanName(name) {
         if (!name) return '';
         return String(name).replace(/\s*\([A-Z0-9]+\)\s*$/i, '').trim();
     }
 
-    // 4. 藍牙連線並傳送最多 5 條收藏路線
     async function syncFavoritesToEsp32() {
         const notify = (msg) => (typeof showToast === 'function' ? showToast(msg) : alert(msg));
 
@@ -1491,8 +1487,10 @@
             if (!bleCharCache || !bleCharCache.service.device.gatt.connected) {
                 notify('正在搜尋小螢幕...');
                 const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'YANs_Bus_Screen' }],
-                    optionalServices: [BLE_SERVICE_UUID]
+                    filters: [
+                        { services: [BLE_SERVICE_UUID] },
+                        { namePrefix: 'YANs' }
+                    ]
                 });
                 device.addEventListener('gattserverdisconnected', () => {
                     bleCharCache = null;
@@ -1512,6 +1510,8 @@
                     ? getFavKey(fav.route, fav.bound, fav.serviceType, fav.stopId)
                     : `${fav.route}_${fav.bound}_${fav.serviceType}_${fav.stopId}`;
                 const top3 = (state.favTop3Map && state.favTop3Map[key]) || [];
+                const firstBus = top3.at(0);
+                const secondBus = top3.at(1);
                 const rawDest = cleanName(fav.destName);
                 const formattedDest = rawDest.startsWith('往') ? rawDest : `往 ${rawDest}`;
 
@@ -1519,8 +1519,8 @@
                     r: String(fav.route || '--'),
                     d: formattedDest,
                     s: cleanName(fav.stopName),
-                    t1: top3[0] ? formatEtaForScreen(top3[0].eta, true) : '暫無班次',
-                    t2: top3[1] ? formatEtaForScreen(top3[1].eta, false) : ''
+                    t1: firstBus ? formatEtaForScreen(firstBus.eta, true) : '暫無班次',
+                    t2: secondBus ? formatEtaForScreen(secondBus.eta, false) : ''
                 };
             });
 
