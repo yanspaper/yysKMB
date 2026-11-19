@@ -1564,9 +1564,20 @@
                 };
             });
 
-            const jsonStr = JSON.stringify(top5List);
-            await bleCharCache.writeValue(new TextEncoder().encode(jsonStr));
-            notify(`已成功同步 ${top5List.length} 條路線到小螢幕！`);
+const jsonStr = JSON.stringify(top5List) + '\n';
+const encodedBytes = new TextEncoder().encode(jsonStr);
+for (let i = 0; i < encodedBytes.length; i += 20) {
+    const chunk = encodedBytes.slice(i, i + 20);
+    if (bleCharCache.writeValueWithResponse) {
+        await bleCharCache.writeValueWithResponse(chunk);
+    } else {
+        await bleCharCache.writeValue(chunk);
+    }
+    await new Promise(r => setTimeout(r, 25));
+}
+notify(`已成功同步 ${top5List.length} 條路線到小螢幕！`);
+
+            
         } catch (err) {
             if (err && err.name !== 'NotFoundError') {
                 console.error(err);
