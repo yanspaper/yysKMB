@@ -1548,10 +1548,9 @@
                 // 自動判斷九巴 (KMB) 或城巴 (CTB)
                 const company = String(fav.co || fav.operator || (String(fav.stopId || '').length === 6 ? 'CTB' : 'KMB')).toUpperCase();
                 // 城巴傳送方向 (I/O)，九巴傳送服務類別 (1/2)
-                const dirOrType = company === 'CTB'
-                    ? String(fav.bound || 'O')
-                    : String(fav.serviceType || '1');
 
+const dirOrType = String(fav.bound || 'O');
+                
                 return {
                     co: company,
                     r: String(fav.route || '--'),
