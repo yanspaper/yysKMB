@@ -1434,152 +1434,83 @@
 </html>
 
 <!-- ==================== YANs ESP32-S3 藍牙同步外掛模組 (修正版) ==================== -->
-<script>
-(function() {
-    const BLE_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-    const BLE_CHAR_UUID    = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-    let bleCharCache = null;
 
-    function getCurrentHHMM() {
-        const now = new Date();
-        const hh = String(now.getHours()).padStart(2, '0');
-        const mm = String(now.getMinutes()).padStart(2, '0');
-        return `${hh}:${mm}`;
-    }
+// ==========================================
+// 6. 藍牙接收回調（支援多塊封包自動拼接）
+// ==========================================
+String bleBuffer = "";
 
-    function injectBleSyncButton() {
-        const refreshBtn = document.getElementById('btnHeaderForceRefresh');
-        if (!refreshBtn || document.getElementById('btnSyncBleScreen')) return;
+class MyServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) {
+    Serial.println("手機已連上小螢幕！");
+    bleBuffer = "";
+    last_activity_time = millis();
+  }
+  void onDisconnect(BLEServer* pServer) {
+    Serial.println("手機已斷線...");
+    bleBuffer = "";
+    delay(150);
+    BLEDevice::startAdvertising();
+  }
+};
 
-        // 1. 藍牙同步按鈕（傳送路線 + 站點ID 俾 ESP32）
-        const bleBtn = document.createElement('button');
-        bleBtn.id = 'btnSyncBleScreen';
-        bleBtn.title = '同步到小螢幕';
-        bleBtn.setAttribute('aria-label', '同步到小螢幕');
-        bleBtn.className = 'w-7 h-7 rounded-full bg-white hover:bg-slate-50 shadow-sm border border-slate-100 flex items-center justify-center active:scale-90 transition shrink-0';
-        bleBtn.style.color = 'var(--primary)';
-        bleBtn.innerHTML = `
-            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/>
-            </svg>
-        `;
-        bleBtn.onclick = syncFavoritesToEsp32;
-        refreshBtn.parentNode.insertBefore(bleBtn, refreshBtn);
+class MyCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pCharacteristic) {
+    String rxPart = pCharacteristic->getValue().c_str();
+    if (rxPart.length() > 0) {
+      bleBuffer += rxPart;
+      last_activity_time = millis();
 
-        // 2. 即時更新鍵（只顯示 時:分 HH:MM）
-        const timeBtn = document.createElement('button');
-        timeBtn.id = 'btnQuickTimeRefresh';
-        timeBtn.title = '點擊即時更新班次';
-        timeBtn.className = 'px-2 h-7 rounded-full bg-white hover:bg-slate-50 shadow-sm border border-slate-100 flex items-center gap-1 text-[11px] font-bold tracking-wider active:scale-95 transition shrink-0';
-        timeBtn.style.color = 'var(--primary)';
-        timeBtn.innerHTML = `<span id="lblLastUpdateHHMM">${getCurrentHHMM()}</span>`;
-        timeBtn.onclick = async () => {
-            const lbl = document.getElementById('lblLastUpdateHHMM');
-            if (lbl) lbl.textContent = '...';
-            if (typeof refreshAllFavoritesEtas === 'function') {
-                await refreshAllFavoritesEtas(true);
-            }
-            if (lbl) lbl.textContent = getCurrentHHMM();
-            if (typeof showToast === 'function') showToast(`已更新 (${getCurrentHHMM()})`);
-        };
-        refreshBtn.parentNode.insertBefore(timeBtn, bleBtn);
-    }
+      // 等待收到完整的 JSON 陣列結尾 ']' 或物件結尾 '}' 才解析
+      if (!bleBuffer.endsWith("]") && !bleBuffer.endsWith("}")) {
+        return;
+      }
 
-    function formatEtaForScreen(etaIsoString, isFirstBus) {
-        if (!etaIsoString) return isFirstBus ? '--' : '';
-        const diffMins = Math.floor((new Date(etaIsoString).getTime() - Date.now()) / 60000);
-        if (diffMins <= 0) return isFirstBus ? '即將到達' : '即將';
-        return isFirstBus ? `${diffMins} 分鐘` : `${diffMins} 分`;
-    }
+      String rxValue = bleBuffer;
+      bleBuffer = "";
+      Serial.println("收到完整藍牙資料: " + rxValue);
 
-    function cleanName(name) {
-        if (!name) return '';
-        return String(name).replace(/\s*\([A-Z0-9]+\)\s*$/i, '').trim();
-    }
+      JsonDocument doc;
+      DeserializationError error = deserializeJson(doc, rxValue);
 
-    async function syncFavoritesToEsp32() {
-        const notify = (msg) => (typeof showToast === 'function' ? showToast(msg) : alert(msg));
-
-        if (!navigator.bluetooth) {
-            notify('此瀏覽器不支援藍牙，請用 Android Chrome 開啟');
-            return;
-        }
-        if (typeof state === 'undefined' || !state.favorites || state.favorites.length === 0) {
-            notify('請先在網頁收藏至少一條巴士線');
-            return;
+      if (!error) {
+        JsonArray routesArr;
+        if (!doc["routes"].isNull()) {
+          const char* s = doc["ssid"];
+          const char* p = doc["pass"];
+          if (s) wifi_ssid = String(s);
+          if (p) wifi_pass = String(p);
+          routesArr = doc["routes"];
+        } else {
+          routesArr = doc.as<JsonArray>();
         }
 
-        try {
-            if (!bleCharCache || !bleCharCache.service.device.gatt.connected) {
-                notify('正在搜尋小螢幕...');
-                const device = await navigator.bluetooth.requestDevice({
-                    filters: [
-                        { services: [BLE_SERVICE_UUID] },
-                        { namePrefix: 'YANs' }
-                    ]
-                });
-                device.addEventListener('gattserverdisconnected', () => {
-                    bleCharCache = null;
-                });
-                const server = await device.gatt.connect();
-                const service = await server.getPrimaryService(BLE_SERVICE_UUID);
-                bleCharCache = await service.getCharacteristic(BLE_CHAR_UUID);
-            }
-
-            notify('正在同步最新班次與站點...');
-            if (typeof refreshAllFavoritesEtas === 'function') {
-                await refreshAllFavoritesEtas(true);
-            }
-
-            // 更新頂部時:分顯示
-            const lbl = document.getElementById('lblLastUpdateHHMM');
-            if (lbl) lbl.textContent = getCurrentHHMM();
-
-            const top5List = state.favorites.slice(0, 5).map(fav => {
-                const key = typeof getFavKey === 'function'
-                    ? getFavKey(fav.route, fav.bound, fav.serviceType, fav.stopId)
-                    : `${fav.route}_${fav.bound}_${fav.serviceType}_${fav.stopId}`;
-                const top3 = (state.favTop3Map && state.favTop3Map[key]) || [];
-                const firstBus = top3.at(0);
-                const secondBus = top3.at(1);
-                const rawDest = cleanName(fav.destName);
-                const formattedDest = rawDest.startsWith('往') ? rawDest : `往 ${rawDest}`;
-
-                // 自動判斷九巴 (KMB) 或城巴 (CTB)
-                const company = String(fav.co || fav.operator || (String(fav.stopId || '').length === 6 ? 'CTB' : 'KMB')).toUpperCase();
-                // 城巴傳送方向 (I/O)，九巴傳送服務類別 (1/2)
-                const dirOrType = company === 'CTB'
-                    ? String(fav.bound || 'O')
-                    : String(fav.serviceType || '1');
-
-                return {
-                    co: company,
-                    r: String(fav.route || '--'),
-                    sid: String(fav.stopId || ''),
-                    dir: dirOrType,
-                    d: formattedDest,
-                    s: cleanName(fav.stopName),
-                    t1: firstBus ? formatEtaForScreen(firstBus.eta, true) : '暫無班次',
-                    t2: secondBus ? formatEtaForScreen(secondBus.eta, false) : ''
-                };
-            });
-
-            const jsonStr = JSON.stringify(top5List);
-            await bleCharCache.writeValue(new TextEncoder().encode(jsonStr));
-            notify(`已成功同步 ${top5List.length} 條路線到小螢幕！`);
-        } catch (err) {
-            if (err && err.name !== 'NotFoundError') {
-                console.error(err);
-                bleCharCache = null;
-                notify('藍牙連線失敗，請確認小螢幕已開機');
-            }
+        if (!routesArr.isNull() && routesArr.size() > 0) {
+          int count = 0;
+          for (size_t idx = 0; idx < routesArr.size() && idx < 5; idx++) {
+            JsonObject item = routesArr[idx];
+            favorites[count].co      = item["co"]  | "KMB";
+            favorites[count].route   = item["r"]   | "--";
+            favorites[count].stop_id = item["sid"] | "";
+            favorites[count].dir     = item["dir"] | "1";
+            favorites[count].dest    = item["d"]   | "";
+            favorites[count].stop    = item["s"]   | "";
+            favorites[count].eta1    = item["t1"]  | "更新中";
+            favorites[count].eta2    = item["t2"]  | "";
+            count++;
+          }
+          if (count > 0) {
+            total_routes = count;
+            current_page = 0;
+            saveFavoritesToFlash();
+            Serial.println("設定已儲存！正在重啟進入省電實時更新模式...");
+            delay(500);
+            ESP.restart();
+          }
         }
+      } else {
+        Serial.println("JSON 解析失敗！");
+      }
     }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', injectBleSyncButton);
-    } else {
-        injectBleSyncButton();
-    }
-})();
-</script>
+  }
+};
